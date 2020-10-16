@@ -1,4 +1,5 @@
 from django.db import models
+import datetime as dt
 
 class Event(models.Model):
     event = models.CharField(max_length=200)
@@ -7,6 +8,18 @@ class Event(models.Model):
     contactNumber = models.CharField(max_length=13) # +91XXXXXXXXXX 
     contactEmail = models.EmailField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now=True)
+
+    def getAccToDate(self, date):
+        if date == "eq":
+            filterVar = "timestamp"
+        else:
+            filterVar = "timestamp__" + date
+        
+        vars()[filterVar] = dt.date.today() # assigning value to a variable names 
+                                            # the string stored in filterVar
+
+        events = Event.objects.filter(eval(filterVar)) # converting string to var
+        return events
 
     def __str__(self):
         return self.event
