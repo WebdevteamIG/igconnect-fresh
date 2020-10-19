@@ -1,5 +1,11 @@
+from datetime import timedelta
+from time import time
 from django.db import models
-import datetime as dt
+from django.dispatch import receiver
+from django.db.models.signals import post_delete
+
+from datetime import datetime, timedelta
+from django.utils import timezone 
 
 class Event(models.Model):
     event = models.CharField(max_length=200)
@@ -9,17 +15,27 @@ class Event(models.Model):
     contactEmail = models.EmailField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now=True)
 
-    def getAccToDate(self, date):
+    @staticmethod
+    def getAccToDate(date):
+        filterDic = {}
         if date == "eq":
-            filterVar = "timestamp"
+            filterVar = "fromtimestamp__contains"
+            filterDic[filterVar] = timezone.now().date()
         else:
-            filterVar = "timestamp__" + date
-        
-        vars()[filterVar] = dt.date.today() # assigning value to a variable names 
-                                            # the string stored in filterVar
+            filterVar = "fromtimestamp__" + date
+            time = timezone.now().time()
+            filterDic[filterVar] = timezone.now() - timedelta(hours=time.hour, minutes=time.minute, seconds=time.second)
 
-        events = Event.objects.filter(eval(filterVar)) # converting string to var
-        return events
+        events = Event.objects.all()
+        _events = []
+        for event in events:
+            timelines = event.timeline.filter(**filterDic)
+            if(len(timelines) > 0):
+                _events.append(event)
+
+        # for event in events:
+        #     timelines = event.timeline.objects.filter(**filterDic)
+        return _events
 
     def __str__(self):
         return self.event
@@ -52,7 +68,7 @@ def uploadTimelineImg(instance, filename):
     ext = filename.split(".")[1]
     filename = instance.tag +"."+ext
     # file will be uploaded to MEDIA_ROOT/<int:event_id>/answers/<str:filename>
-    return '{0}/answers/{1}'.format(instance.event.id, filename)
+    return 'event_{0}/timeline/{1}'.format(instance.event.id, filename)
 
 
 class Timeline(models.Model):
@@ -76,7 +92,7 @@ def uploadPrizeImg(instance, filename):
     ext = filename.split(".")[1]
     filename = "prize" + instance.rankRange + "." + ext
     # file will be uploaded to MEDIA_ROOT/<int:event_id>/prize/<str:filename>
-    return '{0}/prize/{1}'.format(instance.event.id, filename)
+    return 'event_{0}/prize/{1}'.format(instance.event.id, filename)
 
 class Prize(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="prizes")
@@ -95,3 +111,11 @@ class Prize(models.Model):
         verbose_name_plural = 'Prizes'
 
 
+# Post delete hooks
+@receiver(post_delete, sender=Timeline)
+def postDeleteTimeline(sender, instance, **kwargs):
+    instance.image.delete(False)
+
+@receiver(post_delete, sender=Prize)
+def postDeletePrize(sender, instance, **kwargs):
+    instance.image.delete(False)
