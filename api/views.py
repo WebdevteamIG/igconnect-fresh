@@ -1,4 +1,5 @@
 from os import stat
+from re import sub
 from django.contrib.auth import authenticate
 from django.db import connections
 from django.http import request # to manually authenticate user
@@ -17,7 +18,8 @@ from rest_framework.status import (
     HTTP_200_OK,
     HTTP_201_CREATED,
     HTTP_202_ACCEPTED,
-    HTTP_204_NO_CONTENT, HTTP_500_INTERNAL_SERVER_ERROR
+    HTTP_204_NO_CONTENT, 
+    HTTP_500_INTERNAL_SERVER_ERROR, status
 ) # Some Basic HTTP responses
 from rest_framework.response import Response # sending json response
 
@@ -25,6 +27,46 @@ from rest_framework.response import Response # sending json response
 from .models import * 
 from .serializers import *
 
+@csrf_exempt
+@api_view(["POST", "GET", "PUT", "DELETE"])
+@permission_classes((IsAuthenticatedOrReadOnly, ))
+def user(request):
+    userId = request.query_params.get('userId', -1)
+    try:
+        if request.method == "POST":
+            serializer = UserSerializer(data=request.data)
+            if serializers.is_valid():
+                serializer.save()
+                return Response({"message": "create success"}, status=HTTP_201_CREATED)
+            
+            return Response({"error": True, "message": serializer.errors}, status=HTTP_400_BAD_REQUEST)
+        
+        if userId == -1:
+            return Response({"errors": True, "message": "required a valid userId as parameter"}, status=HTTP_400_BAD_REQUEST)
+
+        user = User.objects.get(id = userId)
+        if request.method == "GET":
+            serialized = UserSerializer(user)
+            return Response(serialized.data, status=HTTP_200_OK)
+        
+        elif request.method == "PUT":
+            serializer = UserSerializer(user, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({"message": "update success"}, status=HTTP_202_ACCEPTED)
+            
+            return Response({"error": True, "message": serializer.errors}, status=HTTP_400_BAD_REQUEST)
+        
+        else:
+            user.delete()
+            return Response({"message": "user delete success"}, status=HTTP_204_NO_CONTENT)
+
+    except User.DoesNotExist as err:
+        return Response({"error": True, "message": "user for userId = {} doesnot exists".format(userId)})
+
+    except Exception as err:
+        print(err)
+        return Response({"error": True, "message": "System Error"}, status=HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @csrf_exempt
@@ -124,7 +166,7 @@ def event(request):
             serializer = EventSerializer(data=request.data)
             if serializer.is_valid():
                 serializer.save()
-                return Response({"created": "OK"}, status=HTTP_201_CREATED)
+                return Response({"message" : "create success"}, status=HTTP_201_CREATED)
 
             return Response(serializer.errors, status=HTTP_400_BAD_REQUEST)
         
@@ -168,7 +210,7 @@ def timeline(request):
             print(serializer)
             if serializer.is_valid():
                 serializer.save()
-                return Response({"created": "OK"}, status=HTTP_201_CREATED)
+                return Response({"message" : "create success"}, status=HTTP_201_CREATED)
             
             return Response({"error": True, "message" : serializer.errors}, status=HTTP_400_BAD_REQUEST)
         
@@ -209,7 +251,7 @@ def prize(request):
             serializer = PrizeSerializer(data = request.data)
             if serializer.is_valid():
                 serializer.save()
-                return Response({"created": "OK"}, status=HTTP_201_CREATED)
+                return Response({"message" : "create success"}, status=HTTP_201_CREATED)
 
             return Response({"error": True, "message": serializer.errors}, status=HTTP_400_BAD_REQUEST)
         else:
@@ -242,14 +284,19 @@ def prize(request):
 
 @csrf_exempt
 @api_view(["POST", "GET", "PUT", "DELETE"])
-@permission_classes((IsAuthenticated, ))
+@permission_classes((AllowAny, ))
 def registration(request):
     try:
         if request.method == "POST":
+            userNum = request.data.get('userNumber', '')
+            reg = Registration.objects.filter(userNumber=userNum, event__id=request.data.get('event'))
+            if len(reg) > 0:
+                return Response({"error": True, "message": "registration with this mobile number exists already"})
+
             serializer = RegistrationSerializer(data = request.data)
             if serializer.is_valid():
                 serializer.save()
-                return Response({"created": "OK"}, status=HTTP_201_CREATED)
+                return Response({"message" : "create success"}, status=HTTP_201_CREATED)
 
             return Response({"error": True, "message": serializer.errors}, status=HTTP_400_BAD_REQUEST)
 
@@ -267,7 +314,6 @@ def registration(request):
                     return Response({"message": "registration update success"}, status=HTTP_202_ACCEPTED)
                 
                 else:
-                    registration.delete()
                     return Response({"error": True, "message": reg_serialized.errors}, status=HTTP_400_BAD_REQUEST)
 
             elif request.method == "DELETE":
@@ -280,4 +326,180 @@ def registration(request):
     except Exception as err:
         return Response({"error": True, "message": err}, status=HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@csrf_exempt
+@api_view(["POST", "GET", "PUT", "DELETE"])
+@permission_classes((IsAuthenticated, ))
+def addMedia(request):
+    mediaId = request.query_params.get('mediaId', -1)
+    try:
+        if request.method == "POST":
+            serializer = EventMediaSerializer(data = request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({"message" : "create success"}, status=HTTP_201_CREATED)
+
+            return Response({"error": True, "message": serializer.errors}, status=HTTP_400_BAD_REQUEST)
+
+        else:
+            media = EventMedia.objects.get(id=mediaId)
+            if request.method == "GET":
+                serialized = EventMediaSerializer(media)
+                return Response(serialized.data, status=HTTP_200_OK)
+
+            elif request.method == "PUT":
+                serialized = EventMediaSerializer(media, data=request.data)
+                if serialized.is_valid():
+                    serialized.save()
+                    return Response({"message": "event media file update success"}, status=HTTP_202_ACCEPTED)
                 
+                else:
+                    return Response({"error": True, "message": serialized.errors}, status=HTTP_400_BAD_REQUEST)
+
+            elif request.method == "DELETE":
+                media.delete()
+                return Response({"message": "event media file delete success"}, status=HTTP_204_NO_CONTENT)
+
+    except Registration.DoesNotExist as err:
+        return Response({"message": "media file with id = {} requested does not exists".format(mediaId)}, status=HTTP_404_NOT_FOUND)
+        
+    except Exception as err:
+        return Response({"error": True, "message": err}, status=HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+@api_view(["POST", "GET", "PUT", "DELETE"])
+@permission_classes((AllowAny, ))
+def submission(request):
+    id = request.query_params.get('id', -1)
+    try:
+        if request.method == "POST":
+            userNumber = request.data.get('user', '')[-10:]
+            event = request.data.get('event', '')
+            reg = Registration.objects.get(userNumber=userNumber, event__id=event)
+            if len(reg) == 0:
+                return Response({"error": True, "message": "no registration for this mobile number exists, please first register for the event."})
+            serializer = SubmissionSerializer(data = request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({"message": "submission create success"}, status=HTTP_201_CREATED)
+
+            return Response({"error": True, "message": serializer.errors}, status=HTTP_400_BAD_REQUEST)
+
+        else:
+            submission = Submission.objects.get(id=id)
+            if request.method == "GET":
+                serialized = SubmissionSerializer(submission)
+                return Response(serialized.data, status=HTTP_200_OK)
+
+            elif request.method == "PUT":
+                serialized = SubmissionSerializer(submission, data=request.data)
+                if serialized.is_valid():
+                    serialized.save()
+                    return Response({"message": "submission update success"}, status=HTTP_202_ACCEPTED)
+                
+                else:
+                    return Response({"error": True, "message": serialized.errors}, status=HTTP_400_BAD_REQUEST)
+
+            elif request.method == "DELETE":
+                submission.delete()
+                return Response({"message": "submission delete success"}, status=HTTP_204_NO_CONTENT)
+
+    except Registration.DoesNotExist as err:
+        return Response({"message": "submission with id = {} requested does not exists".format(id)}, status=HTTP_404_NOT_FOUND)
+        
+    except Exception as err:
+        return Response({"error": True, "message": err}, status=HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+@csrf_exempt
+@api_view(["POST", "GET", "PUT", "DELETE"])
+@permission_classes((AllowAny, ))
+def team(request):
+    id = request.query_params.get('id', -1)
+    try:
+        if request.method == "POST":
+            userNumber = request.query_params.get('userNumber', '')[-10:]
+            event = request.data.get('event', '')
+            if(userNumber == ''):
+                return Response({"error": True, "message": "pass a valid mobile number."})
+
+            reg = Registration.objects.get(userNumber=userNumber, event__id=event)
+            if len(reg) == 0:
+                return Response({"error": True, "message": "no registration for this mobile number exists, please first register for the event."})
+            
+            teamName = request.data.get('teamname', '')
+            team = Team.objects.get(event__id=event, teamname=teamName)
+            if len(team) != 0:
+                return Response({"error": True, "message": "this team name is already taken"})
+
+            request.data['leader'] = reg.userNumber
+            serializer = TeamSerializer(data = request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({"message": "team create success"}, status=HTTP_201_CREATED)
+
+            return Response({"error": True, "message": serializer.errors}, status=HTTP_400_BAD_REQUEST)
+
+        else:
+            team = Team.objects.get(id=id)
+            if request.method == "GET":
+                serialized = TeamSerializer(submission)
+                return Response(serialized.data, status=HTTP_200_OK)
+
+            elif request.method == "PUT":
+                serialized = TeamSerializer(submission, data=request.data)
+                if serialized.is_valid():
+                    serialized.save()
+                    return Response({"message": "team update success"}, status=HTTP_202_ACCEPTED)
+                
+                else:
+                    return Response({"error": True, "message": serialized.errors}, status=HTTP_400_BAD_REQUEST)
+
+            elif request.method == "DELETE":
+                submission.delete()
+                return Response({"message": "team delete success"}, status=HTTP_204_NO_CONTENT)
+
+    except Registration.DoesNotExist as err:
+        return Response({"message": "team with id = {} requested does not exists".format(id)}, status=HTTP_404_NOT_FOUND)
+        
+    except Exception as err:
+        return Response({"error": True, "message": err}, status=HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+@api_view(["POST", ])
+@permission_classes((AllowAny, ))
+def joinTeam(request):
+    try:
+        teamName = request.data.get('teamName', '')
+        userNumber = request.data.get('userNumber', '')
+        event = request.data.get('eventId', -1)
+        missing = []
+        if teamName == '':
+            missing.append('team name')
+        
+        if userNumber == '':
+            missing.append('user number')
+        
+        if event == -1:
+            missing.append('event id')
+
+        if len(missing) > 0:
+            return Response({"error": True, "message": 'please pass valid '+', '.join(missing)}, status=HTTP_400_BAD_REQUEST)
+        
+        registration = Registration.objects.get(event__id=event, userNumber=userNumber)
+        team = Team.objects.get(event__id=event, teamname=teamName)
+        registration.team = team
+        registration.save()
+        return Response({"message": "team add success"}, status=HTTP_201_CREATED)
+
+    except Registration.DoesNotExist :
+        return Response({"error": True, "message": "requested registration doesnot exits"}, status=HTTP_404_NOT_FOUND)
+    
+    except Team.DoesNotExist :
+        return Response({"error": True, "message": "requested team doesnot exits"}, status=HTTP_404_NOT_FOUND)
+    
+    except Exception:
+        return Response({"error": True, "message": "internal server error"}, status=HTTP_500_INTERNAL_SERVER_ERROR)

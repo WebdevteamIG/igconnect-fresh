@@ -9,10 +9,13 @@ from django.utils import timezone
 
 class Event(models.Model):
     event = models.CharField(max_length=200)
-    description = models.TextField() # soon rtf field
+    description = models.TextField()
     formLink = models.TextField(blank=True, null=True)
     contactNumber = models.CharField(max_length=13) # +91XXXXXXXXXX 
     contactEmail = models.EmailField(blank=True, null=True)
+    eligiblity = models.TextField()
+    topics = models.TextField()
+    allowSubmission = models.BooleanField(default=False)
     timestamp = models.DateTimeField(auto_now=True)
 
     @staticmethod
@@ -46,22 +49,82 @@ class Event(models.Model):
         verbose_name = 'Event'
         verbose_name_plural = 'Events'
 
+def uploadEventMedia(instance, filename):
+    ext = filename.split(".")[1]
+    filename = instance.type +"."+ext
+    # file will be uploaded to MEDIA_ROOT/<int:event_id>/answers/<str:filename>
+    return 'event_{0}/media/{1}'.format(instance.event.id, filename)
+
+
+
+class EventMedia(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="mediafiles")
+    type = models.CharField(max_length=20)
+    file = models.FileField(upload_to=uploadEventMedia)
+    desc = models.TextField()
+
+    def __str__(self) -> str:
+        return "event" + self.event.id + "_" + self.type
+
+    class Meta:
+        db_table = 'eventmedia'
+        managed = True
+        verbose_name = 'EventMedium'
+        verbose_name_plural = 'EventMedia'
+
+
+class Team(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='teams')
+    teamname = models.CharField(max_length=200)
+    leader = models.CharField(max_length=10)
+
+    def __str__(self):
+        return self.teamname
+    
+    class Meta:
+        db_table = 'team'
+        managed = True
+        verbose_name = 'Team'
+        verbose_name_plural = 'Teams'
+
+
 
 class Registration(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="allRegistrations")
     userName = models.CharField(max_length=200)
-    userNumber = models.CharField(max_length=13)
+    userNumber = models.CharField(max_length=10)
     userEmail = models.EmailField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now=True)
+    team = models.ForeignKey(Team, related_name="team", blank=True, null=True)
 
     def __str__(self):
         return self.userName
+
+    def save(self, *args, **kwargs):
+        self.userNumber = self.userNumber[-10:]
+        super(Registration, self).save(*args, **kwargs)
 
     class Meta:
         db_table = 'registration'
         managed = True
         verbose_name = 'Registration'
         verbose_name_plural = 'Registrations'
+
+
+class Submission(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="allSubmissions")
+    user = models.ForeignKey(Registration, related_name='submissions', blank=True, null=True)
+    type = models.CharField(max_length=20)
+    desc = models.TextField()
+
+    def __str__(self):
+        return "{}_submission".format(self.type)
+
+    class Meta:
+        db_table = 'submission'
+        managed = True
+        verbose_name = 'Submission'
+        verbose_name_plural = 'Submissions'
 
 
 def uploadTimelineImg(instance, filename):
@@ -119,3 +182,7 @@ def postDeleteTimeline(sender, instance, **kwargs):
 @receiver(post_delete, sender=Prize)
 def postDeletePrize(sender, instance, **kwargs):
     instance.image.delete(False)
+
+@receiver(post_delete, sender=EventMedia)
+def postDeletePrize(sender, instance, **kwargs):
+    instance.file.delete(False)

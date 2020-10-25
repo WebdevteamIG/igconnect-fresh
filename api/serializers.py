@@ -2,37 +2,54 @@ from django.db.models import fields
 from rest_framework import serializers
 
 from .models import *
+from django.contrib.auth.models import User
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fileds = (
+            'id', 'username', 'email',
+        )
 
 class EventSerializer(serializers.ModelSerializer):
     class Meta:
         model = Event
-        fields = (
-            'id', 'event', 'description', 'formLink', 'contactNumber', 'contactEmail', 'timestamp',
-        )
+        fields = '__all__'
 
 
 class PrizeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prize
-        fields = (
-            'id', 'event', 'rank', 'rankRange', 'desc', 'image',
-        )
+        fields = '__all__'
 
 
 class TimelineSerializer(serializers.ModelSerializer):
     class Meta:
         model = Timeline
-        fields = (
-            'id', 'event', 'tag', 'fromtimestamp', 'totimestamp', 'desc', 'image',
-        )
+        fields = '__all__'
 
 class RegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Registration
         fields = (
-            'id', 'event', 'userName', 'userNumber', 'userEmail', 'timestamp',
+            'id', 'userName', 'userNumber', 'userEmail',
         )
 
+class TeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = '__all__'
+        
+class SubmissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Submission
+        fields = '__all__'
+
+class EventMediaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventMedia
+        fields = '__all__'
+        
 
 
 
