@@ -1,5 +1,6 @@
-from os import stat
+
 from re import sub
+from time import struct_time
 from django.contrib.auth import authenticate
 from django.db import connections
 from django.http import request # to manually authenticate user
@@ -13,13 +14,13 @@ from rest_framework.permissions import (
 ) # allowing all users to interact with the view
 
 from rest_framework.status import (
-    HTTP_400_BAD_REQUEST,
+    HTTP_302_FOUND, HTTP_400_BAD_REQUEST,
     HTTP_404_NOT_FOUND,
     HTTP_200_OK,
     HTTP_201_CREATED,
     HTTP_202_ACCEPTED,
-    HTTP_204_NO_CONTENT, 
-    HTTP_500_INTERNAL_SERVER_ERROR, status
+    HTTP_204_NO_CONTENT, HTTP_409_CONFLICT, 
+    HTTP_500_INTERNAL_SERVER_ERROR,
 ) # Some Basic HTTP responses
 from rest_framework.response import Response # sending json response
 
@@ -50,7 +51,7 @@ def user(request):
             return Response(serialized.data, status=HTTP_200_OK)
         
         elif request.method == "PUT":
-            serializer = UserSerializer(user, data=request.data)
+            serializer = UserSerializer(user, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
                 return Response({"message": "update success"}, status=HTTP_202_ACCEPTED)
@@ -109,7 +110,7 @@ def welcome(request):
 
         event = Event.objects.get(id=eventId)
         if fetch == "registrations":
-            registration = event.registration.all()
+            registration = event.allRegistrations.all()
             reg_serialized = RegistrationSerializer(registration, many=True)
             return Response(reg_serialized.data, status=HTTP_200_OK)
         
@@ -181,7 +182,7 @@ def event(request):
                 return Response(event_serialized.data, status=HTTP_200_OK)
             
             elif request.method == "PUT":
-                event_serialized = EventSerializer(event, data=request.data)
+                event_serialized = EventSerializer(event, data=request.data, partial=True)
                 if event_serialized.is_valid():
                     event_serialized.save()
                     return Response({"message": "event update success"}, status=HTTP_202_ACCEPTED)
@@ -207,7 +208,6 @@ def timeline(request):
     try:
         if request.method == "POST":
             serializer = TimelineSerializer(data = request.data)
-            print(serializer)
             if serializer.is_valid():
                 serializer.save()
                 return Response({"message" : "create success"}, status=HTTP_201_CREATED)
@@ -216,13 +216,16 @@ def timeline(request):
         
         else:
             timelineId = request.query_params.get('timelineId', -1)
+            if timelineId == -1:
+                return Response({"error": True, "message": "please pass timelineId as a query parameter"}, status=HTTP_400_BAD_REQUEST)
+
             timeline = Timeline.objects.get(id = timelineId)
             if request.method == "GET":
                 timeline_serialized = TimelineSerializer(timeline)
                 return Response(timeline_serialized.data, status=HTTP_200_OK)
 
             elif request.method == "PUT":
-                timeline_serialized = TimelineSerializer(timeline, request.data)
+                timeline_serialized = TimelineSerializer(timeline, request.data, partial=True)
                 if timeline_serialized.is_valid():
                     timeline_serialized.save()
                     return Response({"message": "timeline update success"}, status=HTTP_202_ACCEPTED)
@@ -263,7 +266,7 @@ def prize(request):
                 return Response(prize_serialized.data, status=HTTP_200_OK)
 
             elif request.method == "PUT":
-                prize_serialized = PrizeSerializer(prize, data=request.data)
+                prize_serialized = PrizeSerializer(prize, data=request.data, partial=True)
                 if prize_serialized.is_valid():
                     prize_serialized.save()
                     return Response({"message": "prize update success"}, status=HTTP_202_ACCEPTED)
@@ -289,7 +292,8 @@ def registration(request):
     try:
         if request.method == "POST":
             userNum = request.data.get('userNumber', '')
-            reg = Registration.objects.filter(userNumber=userNum, event__id=request.data.get('event'))
+            event = request.data.get('event', -1)
+            reg = Registration.objects.filter(userNumber=userNum, event__id=event)
             if len(reg) > 0:
                 return Response({"error": True, "message": "registration with this mobile number exists already"})
 
@@ -308,7 +312,7 @@ def registration(request):
                 return Response(reg_serialized.data, status=HTTP_200_OK)
 
             elif request.method == "PUT":
-                reg_serialized = RegistrationSerializer(registration, data=request.data)
+                reg_serialized = RegistrationSerializer(registration, data=request.data, partial=True)
                 if reg_serialized.is_valid():
                     reg_serialized.save()
                     return Response({"message": "registration update success"}, status=HTTP_202_ACCEPTED)
@@ -324,7 +328,8 @@ def registration(request):
         return Response({"message": "registeration requested does not exists"}, status=HTTP_404_NOT_FOUND)
         
     except Exception as err:
-        return Response({"error": True, "message": err}, status=HTTP_500_INTERNAL_SERVER_ERROR)
+        print(err)
+        return Response({"error": True, "message": "internal server error"}, status=HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @csrf_exempt
@@ -348,7 +353,7 @@ def addMedia(request):
                 return Response(serialized.data, status=HTTP_200_OK)
 
             elif request.method == "PUT":
-                serialized = EventMediaSerializer(media, data=request.data)
+                serialized = EventMediaSerializer(media, data=request.data, partial=True)
                 if serialized.is_valid():
                     serialized.save()
                     return Response({"message": "event media file update success"}, status=HTTP_202_ACCEPTED)
@@ -368,18 +373,39 @@ def addMedia(request):
 
 
 @csrf_exempt
-@api_view(["POST", "GET", "PUT", "DELETE"])
+@api_view(["GET", ])
+@permission_classes((AllowAny, ))
+def mySubmission(request):
+    try:
+        userNum = request.query_params.get('userNumber', '')
+        event = request.query_params.get('event', -1)
+        submission = Submission.objects.filter(user__userNumber=userNum, event__id=event)
+        serialized = SubmissionSerializer(submission, many=True)
+        return Response({"message": serialized.data}, status=HTTP_200_OK)
+    
+    except Exception as err:
+        print(err)
+        return Response({"error": True, "message": "internal server error"}, status=HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+@api_view(["POST", "PUT", "DELETE"])
 @permission_classes((AllowAny, ))
 def submission(request):
     id = request.query_params.get('id', -1)
     try:
         if request.method == "POST":
-            userNumber = request.data.get('user', '')[-10:]
-            event = request.data.get('event', '')
-            reg = Registration.objects.get(userNumber=userNumber, event__id=event)
-            if len(reg) == 0:
-                return Response({"error": True, "message": "no registration for this mobile number exists, please first register for the event."})
+            request.data._mutable = True
+            userNumber = request.data.get('userNumber', '')[-10:]
+            event = request.data.get('event', -1)
+            reg = TimelineRegistration.objects.get(registration__userNumber=userNumber, timeline__id=event)
+            request.data['user'] = str(reg.registration.id)
+            submission = Submission.objects.filter(event__id=event, user__id=request.data['user'])
+            if len(submission) != 0:
+                return Response({"error": True, "message": "submission for the user number already exists"}, status=HTTP_409_CONFLICT)
+
             serializer = SubmissionSerializer(data = request.data)
+
             if serializer.is_valid():
                 serializer.save()
                 return Response({"message": "submission create success"}, status=HTTP_201_CREATED)
@@ -388,12 +414,8 @@ def submission(request):
 
         else:
             submission = Submission.objects.get(id=id)
-            if request.method == "GET":
-                serialized = SubmissionSerializer(submission)
-                return Response(serialized.data, status=HTTP_200_OK)
-
-            elif request.method == "PUT":
-                serialized = SubmissionSerializer(submission, data=request.data)
+            if request.method == "PUT":
+                serialized = SubmissionSerializer(submission, data=request.data, partial=True)
                 if serialized.is_valid():
                     serialized.save()
                     return Response({"message": "submission update success"}, status=HTTP_202_ACCEPTED)
@@ -405,11 +427,16 @@ def submission(request):
                 submission.delete()
                 return Response({"message": "submission delete success"}, status=HTTP_204_NO_CONTENT)
 
-    except Registration.DoesNotExist as err:
-        return Response({"message": "submission with id = {} requested does not exists".format(id)}, status=HTTP_404_NOT_FOUND)
-        
+    except TimelineRegistration.DoesNotExist as err:
+        return Response({"message": "this mobile number is not registered for this timeline of the event"}, status=HTTP_404_NOT_FOUND)
+
+    except Submission.DoesNotExist:
+        return Response({"message": "submission requested does not exits"}, status=HTTP_404_NOT_FOUND)
+             
+
     except Exception as err:
-        return Response({"error": True, "message": err}, status=HTTP_500_INTERNAL_SERVER_ERROR)
+        print(err)
+        return Response({"error": True, "message": "internal server error"}, status=HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -430,7 +457,7 @@ def team(request):
                 return Response({"error": True, "message": "no registration for this mobile number exists, please first register for the event."})
             
             teamName = request.data.get('teamname', '')
-            team = Team.objects.get(event__id=event, teamname=teamName)
+            team = Team.objects.filter(event__id=event, teamname=teamName)
             if len(team) != 0:
                 return Response({"error": True, "message": "this team name is already taken"})
 
@@ -449,7 +476,7 @@ def team(request):
                 return Response(serialized.data, status=HTTP_200_OK)
 
             elif request.method == "PUT":
-                serialized = TeamSerializer(submission, data=request.data)
+                serialized = TeamSerializer(submission, data=request.data, partial=True)
                 if serialized.is_valid():
                     serialized.save()
                     return Response({"message": "team update success"}, status=HTTP_202_ACCEPTED)
@@ -469,12 +496,12 @@ def team(request):
 
 
 @csrf_exempt
-@api_view(["POST", ])
+@api_view(["GET", ])
 @permission_classes((AllowAny, ))
 def joinTeam(request):
     try:
-        teamName = request.data.get('teamName', '')
-        userNumber = request.data.get('userNumber', '')
+        teamName = request.query_params.get('teamName', '')
+        userNumber = request.query.get('userNumber', '')
         event = request.data.get('eventId', -1)
         missing = []
         if teamName == '':
@@ -503,3 +530,45 @@ def joinTeam(request):
     
     except Exception:
         return Response({"error": True, "message": "internal server error"}, status=HTTP_500_INTERNAL_SERVER_ERROR)
+
+@csrf_exempt
+@api_view(["GET", ])
+@permission_classes((AllowAny, ))
+def registerTimeline(request):
+    try:
+        timelineId = request.query_params.get('timelineId', '')
+        userNumber = request.query_params.get('userNumber', '')[-10:]
+        event = request.query_params.get('eventId', -1)
+
+        missing = []
+        if timelineId == '':
+            missing.append('team name')
+        
+        if userNumber == '':
+            missing.append('user number')
+        
+        if event == -1:
+            missing.append('event id')
+
+        if len(missing) > 0:
+            return Response({"error": True, "message": 'please pass valid '+', '.join(missing)}, status=HTTP_400_BAD_REQUEST)
+
+        timeline = Timeline.objects.get(id=timelineId)
+        registration = Registration.objects.get(event__id=event, userNumber=userNumber)
+        regTimeline, isCreate = TimelineRegistration.objects.get_or_create(registration=registration, timeline=timeline)
+        if isCreate:
+            return Response({"message": "team add success"}, status=HTTP_201_CREATED)
+        
+        else:
+            return Response({"message": "allready registered for this timeline of event"}, status=HTTP_409_CONFLICT)
+
+    except Registration.DoesNotExist :
+        return Response({"error": True, "message": "requested registration doesnot exits"}, status=HTTP_404_NOT_FOUND)
+    
+    except Timeline.DoesNotExist :
+        return Response({"error": True, "message": "requested timeline doesnot exits"}, status=HTTP_404_NOT_FOUND)
+    
+    except Exception as err:
+        print(err)
+        return Response({"error": True, "message": "internal server error"}, status=HTTP_500_INTERNAL_SERVER_ERROR)
+

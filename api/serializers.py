@@ -31,9 +31,10 @@ class TimelineSerializer(serializers.ModelSerializer):
 class RegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Registration
-        fields = (
-            'id', 'userName', 'userNumber', 'userEmail',
-        )
+        fields = '__all__'
+        # fields = (
+        #     'id', 'event', 'userName', 'userNumber', 'userEmail',
+        # )
 
 class TeamSerializer(serializers.ModelSerializer):
     class Meta:

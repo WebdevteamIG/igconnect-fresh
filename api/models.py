@@ -1,4 +1,5 @@
 from datetime import timedelta
+from re import T
 from time import time
 from django.db import models
 from django.dispatch import receiver
@@ -13,10 +14,9 @@ class Event(models.Model):
     formLink = models.TextField(blank=True, null=True)
     contactNumber = models.CharField(max_length=13) # +91XXXXXXXXXX 
     contactEmail = models.EmailField(blank=True, null=True)
-    eligiblity = models.TextField()
-    topics = models.TextField()
-    allowSubmission = models.BooleanField(default=False)
+    eligiblity = models.TextField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now=True)
+    incentives = models.TextField(blank=True, null=True)
 
     @staticmethod
     def getAccToDate(date):
@@ -88,6 +88,32 @@ class Team(models.Model):
         verbose_name_plural = 'Teams'
 
 
+def uploadTimelineImg(instance, filename):
+    ext = filename.split(".")[-1]
+    filename = instance.tag +"."+ext
+    # file will be uploaded to MEDIA_ROOT/<int:event_id>/answers/<str:filename>
+    return 'event_{0}/timeline/{1}'.format(instance.event.id, filename)
+
+
+class Timeline(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="timeline")
+    tag = models.CharField(max_length=200)
+    fromtimestamp = models.DateTimeField()
+    totimestamp = models.DateTimeField()
+    desc = models.TextField()
+    image = models.FileField(upload_to=uploadTimelineImg, blank=True, null=True)
+    topics = models.TextField(blank=True, null=True)
+    allowSubmission = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.tag
+
+    class Meta:
+        db_table = 'timeline'
+        managed = True
+        verbose_name = 'Timeline'
+        verbose_name_plural = 'Timelines'
+    
 
 class Registration(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="allRegistrations")
@@ -95,7 +121,7 @@ class Registration(models.Model):
     userNumber = models.CharField(max_length=10)
     userEmail = models.EmailField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now=True)
-    team = models.ForeignKey(Team, related_name="team", blank=True, null=True)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="team", blank=True, null=True)
 
     def __str__(self):
         return self.userName
@@ -111,10 +137,26 @@ class Registration(models.Model):
         verbose_name_plural = 'Registrations'
 
 
+class TimelineRegistration(models.Model):
+    registration = models.ForeignKey(Registration, on_delete=models.CASCADE, related_name="timelineregistration")
+    timeline = models.ForeignKey(Timeline, on_delete=models.CASCADE, related_name='registrations')
+    timestamp = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return "{}_{}".format(self.registration.userName, self.timeline.tag)
+
+    class Meta:
+        db_table = 'timelinereg'
+        managed = True
+        verbose_name = 'TimelineRegistration'
+        verbose_name_plural = 'TimelineRegistrations'
+    
+
+
 class Submission(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="allSubmissions")
-    user = models.ForeignKey(Registration, related_name='submissions', blank=True, null=True)
-    type = models.CharField(max_length=20)
+    event = models.ForeignKey(Timeline, on_delete=models.CASCADE, related_name="allSubmissions")
+    user = models.ForeignKey(Registration, on_delete=models.CASCADE, related_name='submissions')
+    type = models.CharField(max_length=20, null=True, blank=True)
     desc = models.TextField()
 
     def __str__(self):
@@ -127,38 +169,15 @@ class Submission(models.Model):
         verbose_name_plural = 'Submissions'
 
 
-def uploadTimelineImg(instance, filename):
-    ext = filename.split(".")[1]
-    filename = instance.tag +"."+ext
-    # file will be uploaded to MEDIA_ROOT/<int:event_id>/answers/<str:filename>
-    return 'event_{0}/timeline/{1}'.format(instance.event.id, filename)
 
-
-class Timeline(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="timeline")
-    tag = models.CharField(max_length=200)
-    fromtimestamp = models.DateTimeField()
-    totimestamp = models.DateTimeField()
-    desc = models.TextField()
-    image = models.FileField(upload_to=uploadTimelineImg, blank=True, null=True)
-
-    def __str__(self):
-        return self.tag
-
-    class Meta:
-        db_table = 'timeline'
-        managed = True
-        verbose_name = 'Timeline'
-        verbose_name_plural = 'Timelines'
-    
 def uploadPrizeImg(instance, filename):
-    ext = filename.split(".")[1]
+    ext = filename.split(".")[-1]
     filename = "prize" + instance.rankRange + "." + ext
     # file will be uploaded to MEDIA_ROOT/<int:event_id>/prize/<str:filename>
     return 'event_{0}/prize/{1}'.format(instance.event.id, filename)
 
 class Prize(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="prizes")
+    event = models.ForeignKey(Timeline, on_delete=models.CASCADE, related_name="prizes")
     rank = models.IntegerField(default=-1)
     rankRange = models.CharField(max_length=8)
     desc = models.TextField()

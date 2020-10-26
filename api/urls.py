@@ -11,4 +11,7 @@ urlpatterns = [
     path('timeline/', timeline, name="timeline"), #Tested
     path('prize/', prize, name="prize"), #Tested
     path('registration/', registration, name="registration"), #Tested
+    path('regfortimeline/', registerTimeline, name="regTimeline"), #Tested
+    path('submit/', submission, name="submission"),
+    path('mysubmission/', mySubmission, name="mySubmission"),
 ]
