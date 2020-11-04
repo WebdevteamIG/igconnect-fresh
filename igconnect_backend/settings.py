@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken', # implementation of token authentication 
     'corsheaders', # if api accesed from other origin
     'api', # application implementing all the required logics
+    'ideasubmissionOIC', #idea submission portal for OIC
 ]
 
 MIDDLEWARE = [
