@@ -1,9 +1,4 @@
-
-from re import sub
-from time import struct_time
-from django.contrib.auth import authenticate
-from django.db import connections
-from django.http import request # to manually authenticate user
+from django.contrib.auth import authenticate # to manually authenticate user
 from django.views.decorators.csrf import csrf_exempt # to use POST req without csrf
 from rest_framework.authtoken.models import Token # generates/ get token for authenticated user
 from rest_framework.decorators import api_view, permission_classes # some usefull decorators
